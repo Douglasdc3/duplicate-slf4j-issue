@@ -1,0 +1,17 @@
+subprojects {
+    repositories {
+        apply plugin: 'java'
+        apply plugin: 'idea'
+
+        mavenCentral()
+    }
+
+    idea {
+        module {
+            inheritOutputDirs = true
+        }
+    }
+}
+
+ext.pluginsDir = rootProject.buildDir.path + '/plugins'
+task build(dependsOn: [':app:uberjar'])

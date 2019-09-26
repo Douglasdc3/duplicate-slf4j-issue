@@ -1,0 +1,139 @@
+plugins {
+    id 'java'
+    id "com.adarshr.test-logger" version "1.1.2"
+}
+
+version '3.0'
+
+apply plugin: 'java'
+apply plugin: 'application'
+
+sourceCompatibility = 11
+mainClassName = "org.example.test.Main"
+
+// required for OpenJFX
+def platform = ""
+if (!project.hasProperty("os")) {
+    def currentOS = org.gradle.internal.os.OperatingSystem.current()
+
+    if (currentOS.isWindows()) {
+        platform = 'win'
+    } else if (currentOS.isLinux()) {
+        platform = 'linux'
+    } else if (currentOS.isMacOsX()) {
+        platform = 'mac'
+    }
+} else {
+    platform = "${os}"
+    buildDir = "build-${os}"
+    archivesBaseName = "${project.name}-${platform}"
+}
+
+repositories {
+    maven {
+        url "http://repo.boundlessgeo.com/main"
+    }
+    maven {
+        url "http://download.osgeo.org/webdav/geotools/"
+    }
+}
+
+dependencies {
+    // Plugin management
+    compile group: 'org.pf4j', name: 'pf4j', version: "${pf4jVersion}"
+    annotationProcessor group: 'org.pf4j', name: 'pf4j', version: "${pf4jVersion}"
+
+    // OpenJFX
+    compile group: 'org.openjfx', name: 'javafx-base', version: '12', classifier: "${platform}"
+    compile group: 'org.openjfx', name: 'javafx-graphics', version: '12', classifier: "${platform}"
+    compile group: 'org.openjfx', name: 'javafx-controls', version: '12', classifier: "${platform}"
+
+    // Logging
+    compile 'org.slf4j:slf4j-api:1.8.+'
+    compile 'org.slf4j:jcl-over-slf4j:1.8.+'
+    compile 'ch.qos.logback:logback-core:+'
+    compile('ch.qos.logback:logback-classic:+') {
+        exclude group: 'javax.activation', module: 'activation'
+    }
+
+    // Common
+    compile 'org.json:json:+'
+    compile 'commons-io:commons-io:+'
+    compile('org.apache.httpcomponents:httpclient:+') {
+        exclude group: 'commons-logging', module: 'commons-logging'
+    }
+    compile 'org.kordamp.ikonli:ikonli-javafx:11.0.+'
+    compile 'org.kordamp.ikonli:ikonli-materialdesign-pack:11.0.+'
+    compile 'org.kordamp.ikonli:ikonli-openiconic-pack:11.0.+'
+    compile 'org.kordamp.ikonli:ikonli-themify-pack:11.0.+'
+
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+    testCompile group: 'org.mockito', name: 'mockito-all', version: '1.10.19'
+}
+
+idea {
+    module {
+        inheritOutputDirs = true
+    }
+}
+
+compileJava {
+    inputs.property("moduleName", "org.example.test.main")
+    doFirst {
+        options.compilerArgs = [
+            '--module-path', classpath.asPath,
+        ]
+        classpath = files()
+    }
+}
+
+jar {
+    manifest {
+        attributes(
+            'Main-Class': mainClassName,
+            'Bundle-ClassPath': ".,\njfxrt.jar"
+        )
+    }
+}
+
+task uberjar(type: Jar, dependsOn: ['compileJava']) {
+    zip64 true
+
+    doFirst {
+        manifest {
+            attributes(
+                'Main-Class': mainClassName,
+                'Bundle-ClassPath': ".,jfxrt.jar"
+            )
+        }
+
+        def serviceDir = file("$buildDir/META-INF/services")
+        serviceDir.deleteDir()
+        serviceDir.mkdirs()
+
+        // copy all service files from deps to buildDir
+        for(file in configurations.runtime) {
+            zipTree(file).matching{ include 'META-INF/services/*' }.each { f ->
+                new File(serviceDir, f.name) << f.getText("UTF-8")
+            }
+        }
+    }
+
+    from configurations.runtime.asFileTree.files.collect {
+        exclude "META-INF/*.SF"
+        exclude "META-INF/*.DSA"
+        exclude "META-INF/*.RSA"
+        zipTree(it)
+    }
+    from files(sourceSets.main.output.classesDirs)
+    from files(sourceSets.main.resources)
+
+    from(configurations.runtime.collect{ it.isDirectory() ? it : zipTree(it) }) {
+        exclude 'META-INF/**' // Don't let Gradle merge service files
+    }
+
+    from fileTree(buildDir).matching{ include 'META-INF/services/*' }
+
+    baseName = "${project.name}"
+    classifier = "${platform}"
+}
